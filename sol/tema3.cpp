@@ -42,26 +42,105 @@ vector<int> read_file(int rank) {
     return workers;
 }
 
+void print_log_message(int sender, int receiver) {
+    // using stringstream to avoid overlapping prints
+    stringstream log_message;
+
+    log_message << "M(" << sender << "," << receiver << ")" << endl; 
+
+    cout << log_message.str();
+}
+
 void print_topology(int rank, map<int, vector<int>> topology) {
     map<int, vector<int>>::iterator itr;
+    stringstream message;
 
-    cout << rank << " -> ";
+    message << rank << " -> ";
 
     for (itr = topology.begin(); itr != topology.end(); ++itr) {
-        cout << itr->first << ":";
+        message << itr->first << ":";
         
         vector<int> values = itr->second;
 
         for (int i = 0; i < values.size(); ++i) {
-            cout << values.at(i);
+            message << values[i];
 
-            if (i != values.size() - 1) cout << ",";
+            if (i != values.size() - 1) message << ",";
         }
 
-        cout << " ";
+        message << " ";
     }
 
-    cout << endl;
+    message << endl;
+
+    cout << message.str();
+}
+
+void print_result_vector(vector<int> v) {
+    stringstream message;
+    message << "Rezultat: ";
+
+    for (int i = 0; i < v.size(); ++i) {
+        message << v[i] << " ";
+    }
+
+    message << endl;
+    cout << message.str();
+}
+
+void send_vector_elems(vector<int> v,
+                       int size,
+                       int start,
+                       int end,
+                       int sender,
+                       int receiver) {
+    int elements_count = end - start;
+
+    MPI_Send(&size, 1, MPI_INT, receiver, 0, MPI_COMM_WORLD);
+    print_log_message(sender, receiver);
+
+    for (int i = start; i < end; ++i) {
+        MPI_Send(&v[i], 1, MPI_INT, receiver, 0, MPI_COMM_WORLD);
+        print_log_message(sender, receiver);
+    }
+}
+
+
+void send_vector_data(vector<int> v, int size, int sender, int receiver) {
+    // send the size first
+    MPI_Send(&size, 1, MPI_INT, receiver, 0, MPI_COMM_WORLD);
+    print_log_message(sender, receiver);
+    
+    MPI_Send(v.data(), size, MPI_INT, receiver, 0, MPI_COMM_WORLD);
+    print_log_message(sender, receiver);
+}
+
+vector<int> recv_vector_elems(int sender) {
+    int size;
+    MPI_Recv(&size, 1, MPI_INT, sender, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    vector<int> vector_data;
+
+    for (int i = 0; i < size; ++i) {
+        int num;
+        MPI_Recv(&num, 1, MPI_INT, sender, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        vector_data.push_back(num);
+    }
+
+    return vector_data;
+}
+
+
+vector<int> recv_vector_data(int *size, int sender) {
+    // recv the vector size first
+    MPI_Recv(&(*size), 1, MPI_INT, sender, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    vector<int> vector_data((*size));
+
+    MPI_Recv(vector_data.data(), (*size), MPI_INT, sender, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    return vector_data;
 }
 
 int main (int argc, char *argv[])
@@ -89,9 +168,8 @@ int main (int argc, char *argv[])
     if (rank < 3) {
         // send your rank to the workers
         for (int i = 0; i < workers.size(); ++i) {
-            MPI_Send(&rank, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;
+            MPI_Send(&rank, 1, MPI_INT, workers[i], 0, MPI_COMM_WORLD);
+            print_log_message(rank, workers[i]);
         }
         
         // send your workers to your neighbours
@@ -100,107 +178,47 @@ int main (int argc, char *argv[])
         int workers_size = workers.size();
 
         int prev_coordonator_workers_size, next_coordonator_workers_size;
-        vector<int> prev_coordonator_workers;
-        vector<int> next_coordonator_workers;
 
-        // send the workers size
-        MPI_Send(&workers_size, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
-        // TODO: uncomment later
-        cout << "M(" << rank << "," << next_rank << ")" << endl;
+        // send to the next neighbour and then recv from the prev one
+        send_vector_data(workers, workers.size(), rank, next_rank);
+        vector<int> prev_coordonator_workers = recv_vector_data(&prev_coordonator_workers_size, prev_rank);
 
-        MPI_Recv(&prev_coordonator_workers_size, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-        // send the workers
-        for (int i = 0; i < workers_size; ++i) {
-            MPI_Send(&workers.at(i), 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
-
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << next_rank << ")" << endl;
-        }
-
-        // recv the workers
-        for (int i = 0; i < prev_coordonator_workers_size; ++i) {
-            int worker_rank;
-            
-            MPI_Recv(&worker_rank, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            prev_coordonator_workers.push_back(worker_rank);
-        }
-
-        // send the workers size
-        MPI_Send(&workers_size, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD);
-        // TODO: uncomment later
-        cout << "M(" << rank << "," << prev_rank << ")" << endl;
-
-        MPI_Recv(&next_coordonator_workers_size, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        
-
-        // send the workers
-        for (int i = 0; i < workers_size; ++i) {
-            MPI_Send(&workers.at(i), 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD);
-
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << prev_rank << ")" << endl;
-        }
-        
-        // recv the workers
-        for (int i = 0; i < next_coordonator_workers_size; ++i) {
-            int worker_rank;
-            MPI_Recv(&worker_rank, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            next_coordonator_workers.push_back(worker_rank);
-        }
-
+        // send to the prev neighbour and then recv from the next one
+        send_vector_data(workers, workers.size(), rank, prev_rank);
+        vector<int> next_coordonator_workers = recv_vector_data(&next_coordonator_workers_size, next_rank);
 
         // send topology to the workers
         for (int i = 0; i < workers_size; ++i) {
-            // send prev
-            MPI_Send(&prev_rank, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;  
+            // send the rank first
+            MPI_Send(&prev_rank, 1, MPI_INT, workers[i], 0, MPI_COMM_WORLD);
+            print_log_message(rank, workers[i]);
 
-            MPI_Send(&prev_coordonator_workers_size, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;    
+            // send prev coord workers
+            send_vector_data(prev_coordonator_workers,
+                             prev_coordonator_workers.size(),
+                             rank, 
+                             workers[i]);
+            
+            MPI_Send(&rank, 1, MPI_INT, workers[i], 0, MPI_COMM_WORLD);
+            print_log_message(rank, workers[i]);
 
-            for (int j = 0; j < prev_coordonator_workers_size; ++j) {
-                MPI_Send(&prev_coordonator_workers.at(j), 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-            }
+            // send your workers
+            send_vector_data(workers,
+                             workers.size(),
+                             rank, 
+                             workers[i]);
+            
+            MPI_Send(&next_rank, 1, MPI_INT, workers[i], 0, MPI_COMM_WORLD);
+            print_log_message(rank, workers[i]);
 
-            // send yours
-            MPI_Send(&rank, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;  
-
-            MPI_Send(&workers_size, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;    
-
-            for (int j = 0; j < workers_size; ++j) {
-                MPI_Send(&workers.at(j), 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-            }
-
-            // send next
-            MPI_Send(&next_rank, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;  
-
-            MPI_Send(&next_coordonator_workers_size, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << workers.at(i) << ")" << endl;    
-
-            for (int j = 0; j < next_coordonator_workers_size; ++j) {
-                MPI_Send(&next_coordonator_workers.at(j), 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-            }
+            // send next coord workers
+            send_vector_data(next_coordonator_workers,
+                             next_coordonator_workers.size(),
+                             rank, 
+                             workers[i]);
         }
         
-        
-        // TODO: print topology
+        // print topology
         map<int, vector<int>> topology;
         
         topology[prev_rank] = prev_coordonator_workers;
@@ -230,15 +248,7 @@ int main (int argc, char *argv[])
 
                 int elements_count = end - start;
 
-                MPI_Send(&elements_count, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-
-                for (int j = start; j < end; ++j) {
-                    MPI_Send(&V[j], 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                    // TODO: uncomment later
-                    cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-                }
+                send_vector_elems(V, elements_count, start, end, rank, workers[i]);
             }
 
             // send the rest of the vector to other coordonators
@@ -249,15 +259,7 @@ int main (int argc, char *argv[])
 
             int elements_count = end - start;
 
-            MPI_Send(&elements_count, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << next_rank << ")" << endl; 
-
-            for (int j = start; j < end; ++j) {
-                MPI_Send(&V[j], 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << next_rank << ")" << endl; 
-            }
+            send_vector_elems(V, elements_count, start, end, rank, next_rank);
 
             // coord 2
             start = (N / total_workers_count) * (workers_size + next_coordonator_workers_size);
@@ -265,120 +267,63 @@ int main (int argc, char *argv[])
 
             elements_count = end - start;
 
-            MPI_Send(&elements_count, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << prev_rank << ")" << endl; 
-
-            for (int j = start; j < end; ++j) {
-                MPI_Send(&V[j], 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << prev_rank << ")" << endl; 
-            }
+            send_vector_elems(V, elements_count, start, end, rank, prev_rank);
 
             // recv computed values from workers
             vector<int> final_vector;
             
             for (int i = 0; i < workers_size; ++i) {
-                int elements_count;
-                MPI_Recv(&elements_count, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                vector<int> recv_elems = recv_vector_elems(workers.at(i));
 
-                for (int j = 0; j < elements_count; ++j) {
-                    int num;
-                    MPI_Recv(&num, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                    final_vector.push_back(num);
-                }
+                final_vector.insert(final_vector.end(), recv_elems.begin(), recv_elems.end());
             }
 
             // recv computed values from coord
 
             // coord 1
-            MPI_Recv(&elements_count, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            for (int j = 0; j < elements_count; ++j) {
-                int num;
-                MPI_Recv(&num, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                final_vector.push_back(num);
-            }
+            vector<int> coord1_elems = recv_vector_elems(next_rank);
+            final_vector.insert(final_vector.end(), coord1_elems.begin(), coord1_elems.end());
 
             // coord 2
-            MPI_Recv(&elements_count, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            for (int j = 0; j < elements_count; ++j) {
-                int num;
-                MPI_Recv(&num, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                final_vector.push_back(num);
-            }
+            vector<int> coord2_elems = recv_vector_elems(prev_rank);
+            final_vector.insert(final_vector.end(), coord2_elems.begin(), coord2_elems.end());
 
             // print result
-            cout << "Rezultat: ";
-
-            for (int i = 0; i < final_vector.size(); ++i) {
-                cout << final_vector.at(i) << " ";
-            }
-
-            cout << endl;
+            print_result_vector(final_vector);
         } else {
-            // TODO: recv vector values from master
-            int vector_size;
-            vector<int> V;
-
-            MPI_Recv(&vector_size, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            for (int i = 0; i < vector_size; ++i) {
-                int num;
-                MPI_Recv(&num, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                V.push_back(num);
-            }
+            // recv vector values from master
+            vector<int> V = recv_vector_elems(MASTER);
 
             // send to workers
             for (int i = 0; i < workers_size; ++i) {
-                int start = i * (double)vector_size / workers_size;
-                int end = min((i + 1) * (double)vector_size / workers_size, vector_size);
+                int start = i * (double)V.size() / workers_size;
+                int end = min((i + 1) * (double)V.size() / workers_size, V.size());
 
                 int elements_count = end - start;
 
-                MPI_Send(&elements_count, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-
-                for (int j = start; j < end; ++j) {
-                    MPI_Send(&V[j], 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD);
-                    // TODO: uncomment later
-                    cout << "M(" << rank << "," << workers.at(i) << ")" << endl; 
-                }
+                send_vector_elems(V, elements_count, start, end, rank, workers[i]);
             }
             
             // recv computed values
             vector<int> computed_values;
 
             for (int i = 0; i < workers_size; ++i) {
-                int elements_count;
-                MPI_Recv(&elements_count, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                vector<int> computed_values_from_worker = recv_vector_elems(workers[i]);
 
-                for (int j = 0; j < elements_count; ++j) {
-                    int num;
-                    MPI_Recv(&num, 1, MPI_INT, workers.at(i), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                    computed_values.push_back(num);
-                }
+                computed_values.insert(computed_values.end(),
+                                       computed_values_from_worker.begin(),
+                                       computed_values_from_worker.end());
             }
 
             // send to master computed values
             int computed_values_size = computed_values.size();
 
-            MPI_Send(&computed_values_size, 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << MASTER << ")" << endl; 
-
-            for (int i = 0; i < computed_values_size; ++i) {
-                MPI_Send(&computed_values[i], 1, MPI_INT, MASTER, 0, MPI_COMM_WORLD);
-                // TODO: uncomment later
-                cout << "M(" << rank << "," << MASTER << ")" << endl; 
-            }
+            send_vector_elems(computed_values,
+                              computed_values_size,
+                              0,
+                              computed_values_size,
+                              rank,
+                              MASTER);
         }
 
     } else {
@@ -393,21 +338,11 @@ int main (int argc, char *argv[])
         for (int i = 0; i < CLUSTERS_COUNT; ++i) {
             int current_rank;
             MPI_Recv(&current_rank, 1, MPI_INT, coordonator_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            int cluster_size;
             
-            MPI_Recv(&cluster_size, 1, MPI_INT, coordonator_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            int cluster_size;
+            vector<int> values = recv_vector_data(&cluster_size, coordonator_rank);
 
-            vector<int> values;
-
-            for (int j = 0; j < cluster_size; ++j) {
-                int num;
-                MPI_Recv(&num, 1, MPI_INT, coordonator_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                values.push_back(num);
-            }
-
-            topology[current_rank] = values;
+            topology[current_rank] = values;            
         }
 
         print_topology(rank, topology);
@@ -431,18 +366,15 @@ int main (int argc, char *argv[])
 
         int computed_values_size = computed_values.size();
 
-        MPI_Send(&computed_values_size, 1, MPI_INT, coordonator_rank, 0, MPI_COMM_WORLD);
-        // TODO: uncomment later
-        cout << "M(" << rank << "," << coordonator_rank << ")" << endl; 
-
-        // send values to coord
-        for (int i = 0; i < computed_values_size; ++i) {
-            MPI_Send(&computed_values[i], 1, MPI_INT, coordonator_rank, 0, MPI_COMM_WORLD);
-            // TODO: uncomment later
-            cout << "M(" << rank << "," << coordonator_rank << ")" << endl; 
-        }
+        send_vector_elems(computed_values,
+                          computed_values_size,
+                          0,
+                          computed_values_size,
+                          rank,
+                          coordonator_rank);
     }
 
     MPI_Finalize();
+
     return 0;
 }
