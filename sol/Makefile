@@ -1,5 +1,5 @@
 build:
-	mpic++ tema3.cpp -o tema3
+	mpic++ tema3.cpp -Wall -o tema3
 
 clean:
 	rm tema3

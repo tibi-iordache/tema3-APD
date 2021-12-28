@@ -64,7 +64,7 @@ void print_topology(int rank, map<int, vector<int>> topology)
 		
 		vector<int> values = itr->second;
 
-		for (int i = 0; i < values.size(); ++i) {
+		for (long unsigned int i = 0; i < values.size(); ++i) {
 			message << values[i];
 
 			if (i != values.size() - 1) message << ",";
@@ -83,7 +83,7 @@ void print_result_vector(vector<int> v)
 	stringstream message;
 	message << "Rezultat: ";
 
-	for (int i = 0; i < v.size(); ++i) {
+	for (long unsigned int i = 0; i < v.size(); ++i) {
 		message << v[i] << " ";
 	}
 
@@ -99,8 +99,7 @@ void send_vector_elems(vector<int> v,
                        int sender,
                        int receiver)
 {
-	int elements_count = end - start;
-
+	// send the size first
 	MPI_Send(&size, 1, MPI_INT, receiver, 0, MPI_COMM_WORLD);
 	print_log_message(sender, receiver);
 
@@ -157,7 +156,7 @@ vector<int> recv_vector_data(int *size, int sender)
 map<int, vector<int>>  establish_topology_coord(int rank, 
 												vector<int> workers) {
 	// send your rank to the workers
-	for (int i = 0; i < workers.size(); ++i) {
+	for (long unsigned int i = 0; i < workers.size(); ++i) {
 		MPI_Send(&rank, 1, MPI_INT, workers[i], 0, MPI_COMM_WORLD);
 		print_log_message(rank, workers[i]);
 	}
@@ -284,7 +283,7 @@ void compute_vector_values_coord(int rank,
 									next_coord_workers.size();
 
 		// send first batch of the vector to this coordinator workers
-		for (int i = 0; i < workers.size(); ++i) {
+		for (long unsigned int i = 0; i < workers.size(); ++i) {
 			// divide equally between workers
 			int start = i * (double)N / total_workers_count;
 			int end = min((i + 1) * (double)N / total_workers_count, N);
@@ -316,7 +315,7 @@ void compute_vector_values_coord(int rank,
 		// recv computed values from workers
 		vector<int> final_vector;
 		
-		for (int i = 0; i < workers.size(); ++i) {
+		for (long unsigned int i = 0; i < workers.size(); ++i) {
 			vector<int> recv_elems = recv_vector_elems(workers.at(i));
 
 			final_vector.insert(final_vector.end(), 
@@ -346,7 +345,7 @@ void compute_vector_values_coord(int rank,
 		vector<int> V = recv_vector_elems(MASTER);
 
 		// send to workers
-		for (int i = 0; i < workers.size(); ++i) {
+		for (long unsigned int i = 0; i < workers.size(); ++i) {
 			// divide equally between workers
 			int start = i * (double)V.size() / workers.size();
 			int end = min((i + 1) * (double)V.size() / workers.size(), V.size());
@@ -359,7 +358,7 @@ void compute_vector_values_coord(int rank,
 		// recv computed values
 		vector<int> computed_values;
 
-		for (int i = 0; i < workers.size(); ++i) {
+		for (long unsigned int i = 0; i < workers.size(); ++i) {
 			vector<int> computed_values_from_worker =
 										recv_vector_elems(workers[i]);
 
